@@ -1,304 +1,463 @@
-const BASE_URL = 'https://wkj7m8ft-5000.inc1.devtunnels.ms/api';
+const BASE_URL = 'https://gatepass-backend-hqqs.onrender.com/api';
 
-// Helper function to get auth headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem('authToken');
-  console.log('Getting auth token:', token ? 'Found' : 'Not found');
   return {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` })
   };
 };
 
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    if (response.status === 401) {
+      // Only redirect if we have a token (expired session)
+      // Don't redirect for login attempts (invalid credentials)
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        localStorage.removeItem('authToken');
+        window.location.href = '/login';
+        throw new Error('Session expired. Please login again.');
+      }
+      // For login attempts without token, just throw the error
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Invalid credentials');
+    }
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
+
+// =================== Visitor API ===================
 export const visitorAPI = {
-  // Get all visitor types
   getVisitorTypes: async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/visitortypes/getall`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Fetched visitor types:', data);
-
-      return Array.isArray(data.data) ? data.data : [];
-    } catch (error) {
-      console.error('Error fetching visitor types:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/visitortypes/getall`, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
   },
 
-  // Get all warehouses
   getWarehouses: async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/warehouse/getall`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Fetched warehouses:', data);
-
-      return Array.isArray(data.data) ? data.data : [];
-    } catch (error) {
-      console.error('Error fetching warehouses:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/warehouse/getall`, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
   },
 
-  // Get time slots for a specific warehouse
   getTimeSlots: async (warehouseId) => {
-    try {
-      const response = await fetch(`${BASE_URL}/warehouse-time-slots/${warehouseId}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`Fetched time slots for warehouse ${warehouseId}:`, data);
-
-      return Array.isArray(data.data) ? data.data : [];
-    } catch (error) {
-      console.error('Error fetching time slots:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/${warehouseId}`, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
   },
 
-  // Submit visitor request
   submitVisitorRequest: async (requestData) => {
-    try {
-      const payload = {
-        name: requestData.name,
-        phone: requestData.phone,
-        email: requestData.email,
-        visitorTypeId: requestData.visitorType,
-        warehouseId: requestData.warehouse,
-        warehouseTimeSlotId: requestData.timeSlot,
-        accompanying: requestData.accompanying || [],
-        date: requestData.date,
-      };
-
-      console.log('Submitting visitor request payload:', payload);
-
-      const response = await fetch(`${BASE_URL}/visitors/create`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        const errorText = await response.text();
-        console.error('Server response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Visitor request submitted:', data);
-
-      return data;
-    } catch (error) {
-      console.error('Error submitting visitor request:', error);
-      throw error;
-    }
+    const payload = {
+      name: requestData.name,
+      phone: requestData.phone,
+      email: requestData.email,
+      visitorTypeId: requestData.visitorType,
+      warehouseId: requestData.warehouse,
+      warehouseTimeSlotId: requestData.timeSlot,
+      accompanying: requestData.accompanying || [],
+      date: requestData.date,
+    };
+    const response = await fetch(`${BASE_URL}/visitors/create`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
   },
 
-  // Login API method
   login: async (credentials) => {
-    try {
-      console.log('Attempting login with:', { email: credentials.email });
-
-      const response = await fetch(`${BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: credentials.email,
-          password: credentials.password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
-      }
-
-      console.log('Login successful:', { 
-        hasToken: !!data.token, 
-        redirectTo: data.redirectTo 
-      });
-
-      // Token will be saved by LoginPage component
-      // We don't save it here to avoid duplication
-      return data;
-    } catch (error) {
-      console.error('Error during login:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    return handleResponse(response);
   },
 
-  // USER MANAGEMENT APIs
-
-  // Get all users
   getAllUsers: async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/users/getall`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Fetched users:', data);
-
-      return Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/users/getall`, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
   },
 
-  // Get user by ID
   getUserById: async (userId) => {
-    try {
-      const response = await fetch(`${BASE_URL}/users/${userId}`, {
-        method: 'GET',
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Fetched user:', data);
-
-      return data.data || data;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/users/${userId}`, { headers: getAuthHeaders() });
+    const data = await handleResponse(response);
+    return data.data || data;
   },
 
-  // Create new user
   createUser: async (userData) => {
-    try {
-      console.log('Creating user:', userData);
-
-      const response = await fetch(`${BASE_URL}/users/create`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        const errorText = await response.text();
-        console.error('Server response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('User created:', data);
-
-      return data;
-    } catch (error) {
-      console.error('Error creating user:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/users/create`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(userData),
+    });
+    return handleResponse(response);
   },
 
-  // Update user
   updateUser: async (userId, userData) => {
-    try {
-      console.log('Updating user:', userId, userData);
-
-      const response = await fetch(`${BASE_URL}/users/${userId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        const errorText = await response.text();
-        console.error('Server response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('User updated:', data);
-
-      return data;
-    } catch (error) {
-      console.error('Error updating user:', error);
-      throw error;
-    }
+    const response = await fetch(`${BASE_URL}/users/${userId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(userData),
+    });
+    return handleResponse(response);
   },
 
-  // Delete user
   deleteUser: async (userId) => {
-    try {
-      console.log('Deleting user:', userId);
+    const response = await fetch(`${BASE_URL}/users/${userId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  }
+};
 
-      const response = await fetch(`${BASE_URL}/users/${userId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
+// =================== Visitor Types API ===================
+export const visitorTypesAPI = {
+  getAll: async () => {
+    const response = await fetch(`${BASE_URL}/visitortypes/getall`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        const errorText = await response.text();
-        console.error('Server response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+  getAllDisabled: async () => {
+    const response = await fetch(`${BASE_URL}/visitortypes/getall/disabled`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
 
-      const data = await response.json();
-      console.log('User deleted:', data);
+  getById: async (id) => {
+    const response = await fetch(`${BASE_URL}/visitortypes/${id}`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
 
-      return data;
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      throw error;
-    }
+  create: async (visitorTypeData) => {
+    const response = await fetch(`${BASE_URL}/visitortypes/create`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(visitorTypeData),
+    });
+    return handleResponse(response);
+  },
+
+  update: async (id, visitorTypeData) => {
+    const response = await fetch(`${BASE_URL}/visitortypes/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(visitorTypeData),
+    });
+    return handleResponse(response);
+  },
+
+  disable: async (id) => {
+    const response = await fetch(`${BASE_URL}/visitortypes/${id}/disable`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  enable: async (id) => {
+    const response = await fetch(`${BASE_URL}/visitortypes/${id}/enable`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  }
+};
+
+// =================== Visitor Requests API ===================
+export const visitorRequestAPI = {
+  getAllRequests: async () => {
+    const response = await fetch(`${BASE_URL}/visitors/getall`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  getRequestById: async (requestId) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
+
+  getRequestsByUserId: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  getPendingRequestsByUserId: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/pending`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  getApprovedRequestsByUserId: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/approved`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  getRejectedRequestsByUserId: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/rejected`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  approveRequest: async (requestId) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}/approve`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  rejectRequest: async (requestId) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}/reject`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getByTrackingCode: async (trackingCode) => {
+    const response = await fetch(`${BASE_URL}/visitors/track/${trackingCode}`);
+    const data = await handleResponse(response);
+    return data.data || data;
+  },
+
+  updateRequest: async (requestId, requestData) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(requestData),
+    });
+    return handleResponse(response);
+  },
+};
+
+// =================== Approver API (NEW) ===================
+export const approverAPI = {
+  // Get all requests assigned to approver
+  getAllRequests: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  // Get pending requests for approver
+  getPendingRequests: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/pending`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  // Get approved requests by approver
+  getApprovedRequests: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/approved`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  // Get rejected requests by approver
+  getRejectedRequests: async (userId) => {
+    const response = await fetch(`${BASE_URL}/visitors/user/${userId}/rejected`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  // Approve a visitor request
+  approveRequest: async (requestId) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}/approve`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Reject a visitor request
+  rejectRequest: async (requestId) => {
+    const response = await fetch(`${BASE_URL}/visitors/${requestId}/reject`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  }
+};
+
+// =================== Receptionist API ===================
+export const receptionistAPI = {
+  getAllVisitors: async () => {
+    const response = await fetch(`${BASE_URL}/visitors/receptionist/all`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  getTodayVisitors: async () => {
+    const response = await fetch(`${BASE_URL}/visitors/receptionist/today`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse(response);
+    return Array.isArray(data.data) ? data.data : [];
+  },
+
+  updateVisitorStatus: async (visitorId, updateData) => {
+    const response = await fetch(`${BASE_URL}/visitors/receptionist/update/${visitorId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updateData),
+    });
+    return handleResponse(response);
+  }
+};
+
+// =================== Warehouse API ===================
+export const warehouseAPI = {
+  getAll: async () => {
+    const response = await fetch(`${BASE_URL}/warehouse/getall`, { headers: getAuthHeaders() });
+    return handleResponse(response);
+  },
+
+  getById: async (id) => {
+    const response = await fetch(`${BASE_URL}/warehouse/${id}`, { headers: getAuthHeaders() });
+    return handleResponse(response);
+  },
+
+  create: async (data) => {
+    const response = await fetch(`${BASE_URL}/warehouse/create`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  update: async (id, data) => {
+    const response = await fetch(`${BASE_URL}/warehouse/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id) => {
+    const response = await fetch(`${BASE_URL}/warehouse/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  }
+};
+
+// =================== Warehouse Time Slots API ===================
+export const warehouseTimeSlotsAPI = {
+  getAll: async () => {
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/getall`, { 
+      headers: getAuthHeaders() 
+    });
+    return handleResponse(response);
+  },
+
+  getByWarehouseId: async (warehouseId) => {
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/${warehouseId}`, { 
+      headers: getAuthHeaders() 
+    });
+    return handleResponse(response);
+  },
+
+  create: async (warehouseId, data) => {
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/warehouse/${warehouseId}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  update: async (id, data) => {
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id) => {
+    const response = await fetch(`${BASE_URL}/warehouse-time-slots/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// =================== Warehouse Workflow API ===================
+export const warehouseWorkflowAPI = {
+  getByWarehouseId: async (warehouseId) => {
+    const response = await fetch(`${BASE_URL}/warehouse-workflow/${warehouseId}`, { 
+      headers: getAuthHeaders() 
+    });
+    const data = await handleResponse(response);
+    return data;
+  },
+
+  add: async (data) => {
+    const response = await fetch(`${BASE_URL}/warehouse-workflow`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  update: async (id, data) => {
+    const response = await fetch(`${BASE_URL}/warehouse-workflow/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id) => {
+    const response = await fetch(`${BASE_URL}/warehouse-workflow/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
   }
 };

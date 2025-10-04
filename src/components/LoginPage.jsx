@@ -19,9 +19,9 @@ const LoginPage = () => {
     }));
 
     // Clear error when user starts typing
-    if (error) {
-      setError('');
-    }
+   // if (error) {
+    //  setError('');
+    //}
   };
 
   const handleSubmit = async (e) => {
@@ -38,7 +38,7 @@ const LoginPage = () => {
     }
 
     setLoading(true);
-    setError('');
+   // setError('');
 
     try {
       console.log('Attempting login...');
@@ -47,29 +47,62 @@ const LoginPage = () => {
         password: formData.password
       });
 
-      // CRITICAL: Save token BEFORE navigation
-      // Use 'authToken' to match api.js (it's already saved there, but let's be explicit)
-      if (response.token) {
-        // Clear any old tokens first
-        localStorage.removeItem('token');
-        localStorage.removeItem('authToken');
-        
-        // Save the new token
-        localStorage.setItem('authToken', response.token);
-        console.log('Token saved to localStorage as authToken');
-        
-        // Verify it was saved
-        const savedToken = localStorage.getItem('authToken');
-        console.log('Verified token in storage:', savedToken ? 'Yes' : 'No');
-      } else {
+      // Extract data from response
+      // The API returns: { success, message, data: { user, redirectTo, token } }
+      const token = response.data?.token;
+      const user = response.data?.user;
+      const redirectTo = response.data?.redirectTo;
+
+      if (!token) {
+        console.error('No token in response:', response);
         throw new Error('No token received from server');
       }
+
+      // Clean the token - remove "Bearer " prefix if present
+      const cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
+
+      // Clear any old tokens first
+      localStorage.removeItem('token');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      
+      // Save the clean token and user data
+      localStorage.setItem('authToken', cleanToken);
+      localStorage.setItem('user', JSON.stringify(user));
+      console.log('Token and user data saved to localStorage');
+      
+      // Verify it was saved
+      const savedToken = localStorage.getItem('authToken');
+      console.log('Verified token in storage:', savedToken ? 'Yes' : 'No');
 
       // Small delay to ensure localStorage is written before navigation
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Redirect to the path specified by the backend
-      const redirectPath = response.redirectTo || '/admin/admin-dashboard';
+      // Determine redirect path
+      let redirectPath = redirectTo;
+      
+      // Fallback logic based on user role if redirectTo is not provided
+      if (!redirectPath && user?.role) {
+        switch (user.role) {
+          case 'Receptionist':
+            redirectPath = '/receptionist/reception-dashboard';
+            break;
+          case 'Admin':
+            redirectPath = '/admin/admin-dashboard';
+            break;
+          case 'Approver':
+            redirectPath = '/approver/approver-dashboard';  // ✓ Fixed path
+            break;
+          default:
+            redirectPath = '/dashboard';
+        }
+      }
+      
+      // Final fallback
+      if (!redirectPath) {
+        redirectPath = '/admin/admin-dashboard';
+      }
+
       console.log('Redirecting to:', redirectPath);
       navigate(redirectPath);
 
